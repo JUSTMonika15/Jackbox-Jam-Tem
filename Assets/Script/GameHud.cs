@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using PurrNet.Lobby;
 
 // Screen-space prototype HUD; the lobby UI is unchanged.
 [RequireComponent(typeof(GameManager))]
@@ -8,11 +9,25 @@ public class GameHud : MonoBehaviour
     GameManager game;
     readonly BoardPresentationRules presentation = new BoardPresentationRules();
     GUIStyle text, centered, arrow, cardTitle, cardValue, cardStatus;
+    bool pauseOpen;
     readonly List<PlayerState> standings = new List<PlayerState>();
     public bool SelfArrowVisible => game != null && game.GetLocalPlayer() != null
         && (game.CurrentState == GameState.Waiting || game.CurrentState == GameState.Countdown);
     void Awake() { game = GetComponent<GameManager>(); }
-    void OnEnable() { text = null; centered = null; arrow = null; cardTitle = null; cardValue = null; cardStatus = null; }
+    void OnEnable()
+    {
+        text = null; centered = null; arrow = null; cardTitle = null; cardValue = null; cardStatus = null;
+        PauseMenuView.onOpened += HandlePauseOpened;
+        PauseMenuView.onClosed += HandlePauseClosed;
+    }
+    void OnDisable()
+    {
+        PauseMenuView.onOpened -= HandlePauseOpened;
+        PauseMenuView.onClosed -= HandlePauseClosed;
+        pauseOpen = false;
+    }
+    void HandlePauseOpened() => pauseOpen = true;
+    void HandlePauseClosed() => pauseOpen = false;
     void OnGUI()
     {
         if (game == null) return;
@@ -61,14 +76,7 @@ public class GameHud : MonoBehaviour
         Label(new Rect(24,153,sideWidth-24,28),"WASD move | Space jump");
         Label(new Rect(24,181,sideWidth-24,28),"Hold E buy | Click push: "+(player == null || player.PushCooldownRemaining <= 0f
             ? "Ready" : player.PushCooldownRemaining.ToString("0.0")+"s"));
-        if (game.HasProtocolWarning)
-        {
-            GUI.color = new Color(1f,.2f,.15f);
-            GUI.Label(new Rect(w/2-280,67,560,52),
-                "NETWORK BUILD MISMATCH — rebuild and relaunch both players",centered);
-            GUI.color = oldColor;
-        }
-        else if (game.IsNetworked && !game.IsAuthoritative && game.NetworkSnapshotAge > 2f)
+        if (game.IsNetworked && !game.IsAuthoritative && game.NetworkSnapshotAge > 2f)
         {
             GUI.color = new Color(1f,.35f,.25f);
             GUI.Label(new Rect(w/2-210,67,420,28),"Synchronizing with host...",centered);
@@ -119,7 +127,8 @@ public class GameHud : MonoBehaviour
         }
         else if (game.CurrentState == GameState.Countdown)
             GUI.Label(new Rect(w/2-160,h/2+80,320,60),"Ready in "+Mathf.CeilToInt(game.CountdownRemaining),arrow);
-        else if (game.CurrentState == GameState.Playing && player != null)
+        else if (game.CurrentState == GameState.Playing && player != null
+            && HudOverlayRules.ShowGameplayCard(pauseOpen))
         {
             PropertyZone land = player.IsGrounded ? player.NearbyProperty : null;
             if (land != null)

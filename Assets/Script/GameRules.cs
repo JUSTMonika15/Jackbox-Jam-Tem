@@ -308,6 +308,8 @@ public sealed class ToyBoardPalette
     public string CenterAccentHex => "#FFF0A8";
     public string BoundaryHex => "#3A315A";
     public string UnownedPropertyColor(int boardIndex) => ColorFor(boardIndex,BoardSpaceKind.Property);
+    public string LabelHexFor(BoardSpaceKind kind)
+        => kind == BoardSpaceKind.GoToJail || kind == BoardSpaceKind.JailVisit ? "#FFFFFF" : "#1F1733";
     public string ColorFor(int boardIndex, BoardSpaceKind kind)
     {
         if (kind == BoardSpaceKind.Property)
@@ -327,6 +329,38 @@ public sealed class ToyBoardPalette
             default: return "#F2C94C";
         }
     }
+}
+
+public static class HudOverlayRules
+{
+    public static bool ShowGameplayCard(bool pauseOpen) => !pauseOpen;
+}
+
+public static class MainMenuRulesContent
+{
+    public const string Title = "HOW TO PLAY";
+    public const string Body =
+        "GOAL\nRun laps, collect gold on map and claim properties before time runs out.\n\n" +
+        "CONTROLS\nWASD — Move    SPACE — Jump    LEFT CLICK — Push\nHOLD E for 2 seconds — Buy the property under you\n\n" +
+        "SCORE\nLAPS x 100 + CASH. Highest score wins.\n\n" +
+        "PROPERTY & RENT\nLand on an unowned city to buy it. Rivals landing on your city pay RENT. " +
+        "If they cannot pay, their properties are sold to the bank automatically.\n\n" +
+        "SPECIAL SPACES\nFORTUNE and CHANCE can change money, movement or send you to jail. " +
+        "Jail blocks movement for 5 seconds. With no cash or property left, you work for 3 seconds.";
+}
+
+public static class TouchControlRules
+{
+    public static bool ShouldShow(bool hasTouchscreen, bool isMobilePlatform)
+        => hasTouchscreen || isMobilePlatform;
+}
+
+public static class TouchControlBindings
+{
+    public const string Move = "<Gamepad>/leftStick";
+    public const string Jump = "<Gamepad>/buttonSouth";
+    public const string Push = "<Gamepad>/buttonWest";
+    public const string Buy = "<Gamepad>/buttonNorth";
 }
 
 // Shared presentation numbers keep the runtime HUD/camera consistent and let the
@@ -468,4 +502,10 @@ public sealed class MatchClock
         Remaining = Math.Max(0f, Remaining - deltaTime);
         if (Remaining <= 0f) State = GameState.Results;
     }
+}
+
+public static class TouchControlLayout
+{
+    public const float ButtonAnchorX = 1f;
+    public const float ButtonAnchorY = 0f;
 }

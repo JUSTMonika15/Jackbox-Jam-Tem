@@ -31,6 +31,7 @@ public class ContinuousBoard : MonoBehaviour
         var rules = new ContinuousBoardRules();
         IReadOnlyList<BoardSpaceDefinition> spaces = rules.CreateSpaces();
         for (int index = 0; index < spaces.Count; index++) CreateSpace(index, spaces[index]);
+        ImproveAuthoredJailLabel();
         CreateCenterDecoration();
         CreateBoundaries();
     }
@@ -152,8 +153,17 @@ public class ContinuousBoard : MonoBehaviour
         label.fontSize = 64;
         label.characterSize = tileSize.x >= 3f && tileSize.z >= 3f ? .09f : .075f;
         label.fontStyle = FontStyle.Bold;
-        label.color = new Color(.12f,.09f,.2f);
+        label.color = ColorFromHex(palette.LabelHexFor(definition.Kind));
         ApplyDepthTestedTextMaterial(label);
+    }
+
+    private static void ImproveAuthoredJailLabel()
+    {
+        GameObject jailPen = GameObject.Find("JailPen");
+        TextMesh jailLabel = jailPen == null ? null : jailPen.GetComponentInChildren<TextMesh>(true);
+        if (jailLabel == null) return;
+        jailLabel.color = new Color(.08f,.1f,.16f);
+        jailLabel.fontStyle = FontStyle.Bold;
     }
 
     private void CreateCenterDecoration()
