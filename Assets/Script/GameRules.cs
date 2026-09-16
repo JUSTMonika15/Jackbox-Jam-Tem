@@ -307,9 +307,10 @@ public sealed class ToyBoardPalette
     public string CenterHex => "#6ED6E8";
     public string CenterAccentHex => "#FFF0A8";
     public string BoundaryHex => "#3A315A";
-    public string UnownedPropertyColor(int boardIndex) => ColorFor(boardIndex,BoardSpaceKind.Property);
+    public string UnownedPropertyColor(int boardIndex) => "#4A4D55";
     public string LabelHexFor(BoardSpaceKind kind)
-        => kind == BoardSpaceKind.GoToJail || kind == BoardSpaceKind.JailVisit ? "#FFFFFF" : "#1F1733";
+        => kind == BoardSpaceKind.Property || kind == BoardSpaceKind.GoToJail
+            || kind == BoardSpaceKind.JailVisit ? "#FFFFFF" : "#1F1733";
     public string ColorFor(int boardIndex, BoardSpaceKind kind)
     {
         if (kind == BoardSpaceKind.Property)
@@ -347,6 +348,26 @@ public static class MainMenuRulesContent
         "If they cannot pay, their properties are sold to the bank automatically.\n\n" +
         "SPECIAL SPACES\nFORTUNE and CHANCE can change money, movement or send you to jail. " +
         "Jail blocks movement for 5 seconds. With no cash or property left, you work for 3 seconds.";
+}
+
+public sealed class MainMenuRulesLayout
+{
+    public float PanelWidth => 760f;
+    public float PanelHeight => 590f;
+    public float BodyTop => 82f;
+    public float BodyHeight => 420f;
+    public int BodyFontSize => 17;
+    public float CloseButtonY => 526f;
+    public float CloseButtonHeight => 42f;
+}
+
+public static class MainMenuVisualRules
+{
+    public const string BackgroundSpriteName = "mono rush";
+    public const float ControlPanelOpacity = .62f;
+    public const float ControlPanelWidth = 440f;
+    public const float ControlPanelHeight = 220f;
+    public const float ControlPanelY = -45f;
 }
 
 public static class TouchControlRules
