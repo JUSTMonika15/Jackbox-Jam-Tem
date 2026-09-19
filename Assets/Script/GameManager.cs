@@ -48,8 +48,8 @@ public class GameManager : NetworkIdentity
     {
         clock = new MatchClock(countdownDuration, matchDuration);
         if (GetComponent<ContinuousBoard>() == null) gameObject.AddComponent<ContinuousBoard>();
-        if (GetComponent<GameHud>() == null) gameObject.AddComponent<GameHud>();
         if (GetComponent<BoardCamera>() == null) gameObject.AddComponent<BoardCamera>();
+        if (GetComponent<GameHud>() == null) gameObject.AddComponent<GameHud>();
     }
 
     private void Update()

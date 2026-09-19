@@ -8,6 +8,7 @@ public class PropertyZone : MonoBehaviour
     [SerializeField, Min(0)] private int price = 20;
     [SerializeField, Min(0)] private int toll = 5;
     [SerializeField] private Renderer zoneRenderer;
+    [SerializeField] private TextMesh zoneLabel;
     [SerializeField] private Color neutralColor = new Color(0.6f, 0.6f, 0.6f);
     [SerializeField, Min(0f)] private float networkRequestTolerance = 1.5f;
     private readonly HashSet<PlayerState> localVisitors = new HashSet<PlayerState>();
@@ -70,13 +71,18 @@ public class PropertyZone : MonoBehaviour
     {
         if (player == null || !player.CanAct) return;
         if (Owner == null || Owner == player) return;
-        if (player.ConsumeTollPass()) { player.ShowMessage("Free toll pass used!"); return; }
+        if (player.ConsumeTollPass())
+        {
+            player.ShowFeedback("TOLL PASS USED\nNo rent paid", PlayerFeedbackKind.Pass);
+            return;
+        }
         PlayerState landlord = Owner;
         int paid = player.PayMandatory(toll, landlord);
         if (paid > 0)
         {
             landlord.RecordRent(paid);
-            player.ShowMessage("-$" + paid + " toll to " + landlord.DisplayName);
+            player.ShowFeedback("RENT PAID\n-$" + paid + " to " + landlord.DisplayName,
+                PlayerFeedbackKind.Negative);
         }
     }
     private void OnDisable()
@@ -113,8 +119,9 @@ public class PropertyZone : MonoBehaviour
         }
         Owner = player;
         player.RecordPurchase();
-        player.ShowMessage("Bought " + propertyName + " for $" + price);
-        SetColor(player.PlayerColor);
+        player.ShowFeedback("PROPERTY BOUGHT\n" + propertyName + " for $" + price,
+            PlayerFeedbackKind.Positive);
+        SetPresentation(player.PlayerColor, true);
         if (game != null) game.BroadcastPropertyState(this);
         return true;
     }
@@ -131,7 +138,7 @@ public class PropertyZone : MonoBehaviour
         authoritativeVisitors.Clear();
         Owner = null;
         rules = new PropertyRules(Mathf.Max(0, price), Mathf.Max(0, toll));
-        SetColor(neutralColor);
+        SetPresentation(neutralColor, false);
         if (game != null && game.IsAuthoritative) game.BroadcastPropertyState(this);
     }
     public void ForgetVisitor(PlayerState player)
@@ -144,7 +151,7 @@ public class PropertyZone : MonoBehaviour
     {
         if (Owner == null || rules.Owner != null) return false;
         Owner = null;
-        SetColor(neutralColor);
+        SetPresentation(neutralColor, false);
         if (game != null) game.BroadcastPropertyState(this);
         // Keep contact records: standing inside a sold tile must not retrigger rent.
         return true;
@@ -152,16 +159,25 @@ public class PropertyZone : MonoBehaviour
     internal void ApplyNetworkOwner(PlayerState owner, Color ownerColor)
     {
         Owner = owner;
-        SetColor(owner == null ? neutralColor : ownerColor);
+        SetPresentation(owner == null ? neutralColor : ownerColor, owner != null);
     }
-    public void Configure(string displayName,int purchasePrice,int rent,Renderer renderer,Color unownedColor)
+    public void Configure(string displayName,int purchasePrice,int rent,Renderer renderer,TextMesh label,Color unownedColor)
     {
         propertyName = string.IsNullOrWhiteSpace(displayName) ? "Property" : displayName;
         price = Mathf.Max(0, purchasePrice);
         toll = Mathf.Max(0, rent);
         zoneRenderer = renderer;
+        zoneLabel = label;
         neutralColor = unownedColor;
         ResetProperty();
+    }
+    private void SetPresentation(Color color, bool owned)
+    {
+        SetColor(color);
+        if (zoneLabel == null) return;
+        var palette = new ToyBoardPalette();
+        zoneLabel.color = ColorUtility.TryParseHtmlString(palette.PropertyLabelHex(owned), out Color labelColor)
+            ? labelColor : (owned ? Color.black : Color.white);
     }
     private void SetColor(Color color)
     {

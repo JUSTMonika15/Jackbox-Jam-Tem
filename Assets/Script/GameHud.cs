@@ -7,13 +7,30 @@ using PurrNet.Lobby;
 public class GameHud : MonoBehaviour
 {
     GameManager game;
+    BoardCamera boardCamera;
     readonly BoardPresentationRules presentation = new BoardPresentationRules();
+    readonly HudGameplayCardRules gameplayCardRules = new HudGameplayCardRules();
     GUIStyle text, centered, arrow, cardTitle, cardValue, cardStatus;
     bool pauseOpen;
+    PlayerState feedbackPlayer;
+    int lastFeedbackSequence;
     readonly List<PlayerState> standings = new List<PlayerState>();
     public bool SelfArrowVisible => game != null && game.GetLocalPlayer() != null
         && (game.CurrentState == GameState.Waiting || game.CurrentState == GameState.Countdown);
-    void Awake() { game = GetComponent<GameManager>(); }
+    void Awake() { game = GetComponent<GameManager>(); boardCamera = GetComponent<BoardCamera>(); }
+    void Update()
+    {
+        PlayerState local = game == null ? null : game.GetLocalPlayer();
+        if (local != feedbackPlayer)
+        {
+            feedbackPlayer = local;
+            lastFeedbackSequence = 0;
+        }
+        if (local == null || local.FeedbackSequence == lastFeedbackSequence) return;
+        lastFeedbackSequence = local.FeedbackSequence;
+        PlayerSfx sfx = local.GetComponent<PlayerSfx>();
+        if (sfx != null) sfx.PlayFeedback(local.FeedbackKind);
+    }
     void OnEnable()
     {
         text = null; centered = null; arrow = null; cardTitle = null; cardValue = null; cardStatus = null;
@@ -72,6 +89,8 @@ public class GameHud : MonoBehaviour
         Panel(new Rect(w/2-105,8,210,42));
         GUI.Label(new Rect(w/2-101,10,202,38),game.CurrentState+"  "+Mathf.CeilToInt(game.TimeRemaining)+"s",centered);
         GUI.Label(new Rect(w-94,10,82,24),game.NetworkVersionLabel,centered);
+        if (boardCamera != null && GUI.Button(new Rect(w/2-92,52,184,28),boardCamera.ModeButtonText))
+            boardCamera.ToggleMode();
         Panel(new Rect(12,146,sideWidth,70));
         Label(new Rect(24,153,sideWidth-24,28),"WASD move | Space jump");
         Label(new Rect(24,181,sideWidth-24,28),"Hold E buy | Click push: "+(player == null || player.PushCooldownRemaining <= 0f
@@ -131,10 +150,13 @@ public class GameHud : MonoBehaviour
             && HudOverlayRules.ShowGameplayCard(pauseOpen))
         {
             PropertyZone land = player.IsGrounded ? player.NearbyProperty : null;
-            if (land != null)
+            string message = player.Message;
+            HudGameplayCard card = gameplayCardRules.Choose(land != null,!string.IsNullOrEmpty(message));
+            if (card == HudGameplayCard.Property)
                 DrawPropertyCard(w,h,player,land,oldColor);
-            else if (!string.IsNullOrEmpty(player.Message))
-                DrawEventCard(w,h,player.Message,oldColor);
+            else if (card == HudGameplayCard.Event)
+                DrawEventCard(w,h,message,player.FeedbackKind,oldColor,
+                    boardCamera != null && boardCamera.PreferredMode == CameraViewMode.Shoulder);
         }
         else if (game.CurrentState == GameState.Results)
         {
@@ -215,13 +237,16 @@ public class GameHud : MonoBehaviour
             GUI.color = restoreColor;
         }
     }
-    void DrawEventCard(float width,float height,string message,Color restoreColor)
+    void DrawEventCard(float width,float height,string message,PlayerFeedbackKind kind,Color restoreColor,
+        bool shoulderView)
     {
-        float cardWidth = presentation.EventCardWidth;
-        float cardHeight = presentation.EventCardHeight;
+        var feedbackRules = new PlayerFeedbackRules();
+        bool major = feedbackRules.IsMajor(kind);
+        float cardWidth = presentation.EventCardWidth + (major ? 80f : 0f);
+        float cardHeight = presentation.EventCardHeight + (major ? 30f : 0f);
         float x = width*.5f-cardWidth*.5f;
-        float y = presentation.EventCardTop(height);
-        string title = "EVENT";
+        float y = presentation.EventCardTop(height,cardHeight,shoulderView);
+        string title = FeedbackTitle(kind);
         string body = message ?? string.Empty;
         int split = body.IndexOf('\n');
         if (split >= 0)
@@ -230,15 +255,55 @@ public class GameHud : MonoBehaviour
             body = body.Substring(split+1);
         }
 
+        Color accent = FeedbackColor(kind);
+        if (major)
+        {
+            float pulse = .18f + .08f * (Mathf.Sin(Time.unscaledTime * 9f) * .5f + .5f);
+            GUI.color = new Color(accent.r,accent.g,accent.b,pulse);
+            GUI.DrawTexture(new Rect(0,0,width,12f),Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(0,height-12f,width,12f),Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(0,0,12f,height),Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(width-12f,0,12f,height),Texture2D.whiteTexture);
+            GUI.color = restoreColor;
+        }
+
         GUI.color = new Color(0f,0f,0f,.8f);
         GUI.DrawTexture(new Rect(x-3f,y-3f,cardWidth+6f,cardHeight+6f),Texture2D.whiteTexture);
         GUI.color = restoreColor;
         Panel(new Rect(x,y,cardWidth,cardHeight));
-        GUI.color = new Color(.2f,.55f,.95f,.98f);
+        GUI.color = accent;
         GUI.DrawTexture(new Rect(x,y,cardWidth,42f),Texture2D.whiteTexture);
         GUI.color = restoreColor;
         GUI.Label(new Rect(x+10f,y+2f,cardWidth-20f,38f),title,cardTitle);
-        GUI.Label(new Rect(x+16f,y+49f,cardWidth-32f,62f),body,centered);
+        GUI.Label(new Rect(x+16f,y+49f,cardWidth-32f,cardHeight-58f),body,centered);
+    }
+    static string FeedbackTitle(PlayerFeedbackKind kind)
+    {
+        switch (kind)
+        {
+            case PlayerFeedbackKind.Positive: return "REWARD";
+            case PlayerFeedbackKind.Negative: return "PAYMENT";
+            case PlayerFeedbackKind.SpeedUp: return "SPEED UP";
+            case PlayerFeedbackKind.SlowDown: return "SLOWED";
+            case PlayerFeedbackKind.Teleport: return "BACK TO START";
+            case PlayerFeedbackKind.Jail: return "JAILED";
+            case PlayerFeedbackKind.Pass: return "PASS ACQUIRED";
+            default: return "EVENT";
+        }
+    }
+    static Color FeedbackColor(PlayerFeedbackKind kind)
+    {
+        switch (kind)
+        {
+            case PlayerFeedbackKind.Positive: return new Color(.16f,.72f,.38f,.98f);
+            case PlayerFeedbackKind.Negative:
+            case PlayerFeedbackKind.Jail: return new Color(.88f,.16f,.16f,.98f);
+            case PlayerFeedbackKind.SpeedUp: return new Color(.05f,.78f,.82f,.98f);
+            case PlayerFeedbackKind.SlowDown: return new Color(.48f,.28f,.82f,.98f);
+            case PlayerFeedbackKind.Teleport: return new Color(1f,.48f,.1f,.98f);
+            case PlayerFeedbackKind.Pass: return new Color(.92f,.68f,.08f,.98f);
+            default: return new Color(.2f,.55f,.95f,.98f);
+        }
     }
     static void Panel(Rect rect)
     {

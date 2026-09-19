@@ -62,7 +62,7 @@ public static class BoardContactRules
 
 public static class NetworkProtocolRules
 {
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 6;
     public static bool IsCompatible(int expected, int received) => expected == received;
 }
 

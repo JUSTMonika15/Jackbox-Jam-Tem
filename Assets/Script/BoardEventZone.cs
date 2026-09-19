@@ -47,23 +47,49 @@ public class BoardEventZone : MonoBehaviour
         if (kind <= BoardEventKind.Dividend)
         {
             List<EconomyAccount> accounts = new List<EconomyAccount>();
+            Dictionary<PlayerState, int> moneyBefore = new Dictionary<PlayerState, int>();
             int owned = 0;
             if (game != null)
                 foreach (PlayerState peer in game.Players)
-                    if (peer != null) accounts.Add(peer.Account);
+                    if (peer != null)
+                    {
+                        accounts.Add(peer.Account);
+                        moneyBefore[peer] = peer.Money;
+                    }
             if (kind == BoardEventKind.Dividend)
                 foreach (PropertyZone land in FindObjectsByType<PropertyZone>())
                     if (land.Owner == player) owned++;
             int changed = rules.ApplyMoney(kind, player.Account, accounts, owned);
             if (game != null)
                 foreach (PlayerState peer in game.Players)
-                    if (peer != null) peer.NotifyStateChanged();
-            player.ShowMessage((fortune ? "FORTUNE" : "CHANCE") + "\n" + kind + ": "
-                + (changed >= 0 ? "+$" : "-$") + System.Math.Abs((long)changed));
+                    if (peer != null)
+                    {
+                        peer.NotifyStateChanged();
+                        if (kind == BoardEventKind.Birthday && peer != player
+                            && moneyBefore.TryGetValue(peer, out int before) && peer.Money < before)
+                            peer.ShowFeedback("BIRTHDAY GIFT\n-$" + (before-peer.Money) + " to "
+                                + player.DisplayName, PlayerFeedbackKind.Negative);
+                    }
+            player.ShowFeedback((fortune ? "FORTUNE" : "CHANCE") + "\n" + kind + ": "
+                    + (changed >= 0 ? "+$" : "-$") + System.Math.Abs((long)changed),
+                changed >= 0 ? PlayerFeedbackKind.Positive : PlayerFeedbackKind.Negative);
             return;
         }
         player.ApplyBoardEffect(kind);
-        player.ShowMessage((fortune ? "FORTUNE" : "CHANCE") + "\n" + EventText(kind));
+        player.ShowFeedback((fortune ? "FORTUNE" : "CHANCE") + "\n" + EventText(kind), FeedbackKind(kind));
+    }
+    private static PlayerFeedbackKind FeedbackKind(BoardEventKind kind)
+    {
+        switch (kind)
+        {
+            case BoardEventKind.JailPass:
+            case BoardEventKind.TollPass: return PlayerFeedbackKind.Pass;
+            case BoardEventKind.ReturnStart: return PlayerFeedbackKind.Teleport;
+            case BoardEventKind.Jail: return PlayerFeedbackKind.Jail;
+            case BoardEventKind.SpeedUp: return PlayerFeedbackKind.SpeedUp;
+            case BoardEventKind.SlowDown: return PlayerFeedbackKind.SlowDown;
+            default: return PlayerFeedbackKind.Neutral;
+        }
     }
     private static string EventText(BoardEventKind kind)
     {

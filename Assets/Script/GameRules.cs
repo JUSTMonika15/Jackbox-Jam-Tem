@@ -6,6 +6,56 @@ public sealed class RaceRules
     public long Score(int laps, int money) => (long)Math.Max(0, laps) * 100 + Math.Max(0, money);
 }
 
+public sealed class MovementBonusRules
+{
+    readonly Dictionary<object, int> claimedLapByPlayer = new Dictionary<object, int>();
+
+    public int TryClaim(object player, int lapCount)
+    {
+        if (player == null) return 0;
+        int lap = Math.Max(0, lapCount);
+        if (claimedLapByPlayer.TryGetValue(player, out int claimedLap) && claimedLap == lap) return 0;
+        claimedLapByPlayer[player] = lap;
+        return (int)Math.Min(int.MaxValue, 10L + (long)lap * 5L);
+    }
+
+    public void Reset() => claimedLapByPlayer.Clear();
+}
+
+public enum PlayerFeedbackKind
+{
+    Neutral, Positive, Negative, SpeedUp, SlowDown, Teleport, Jail, Pass
+}
+
+public enum PlayerFeedbackSound
+{
+    None, Reward, Penalty, SpeedUp, SlowDown, Teleport, Jail
+}
+
+public sealed class PlayerFeedbackRules
+{
+    public float Duration(PlayerFeedbackKind kind)
+        => IsMajor(kind) ? 2.25f : 1.5f;
+
+    public bool IsMajor(PlayerFeedbackKind kind)
+        => kind == PlayerFeedbackKind.Jail || kind == PlayerFeedbackKind.Teleport;
+
+    public PlayerFeedbackSound SoundFor(PlayerFeedbackKind kind)
+    {
+        switch (kind)
+        {
+            case PlayerFeedbackKind.Positive:
+            case PlayerFeedbackKind.Pass: return PlayerFeedbackSound.Reward;
+            case PlayerFeedbackKind.Negative: return PlayerFeedbackSound.Penalty;
+            case PlayerFeedbackKind.SpeedUp: return PlayerFeedbackSound.SpeedUp;
+            case PlayerFeedbackKind.SlowDown: return PlayerFeedbackSound.SlowDown;
+            case PlayerFeedbackKind.Teleport: return PlayerFeedbackSound.Teleport;
+            case PlayerFeedbackKind.Jail: return PlayerFeedbackSound.Jail;
+            default: return PlayerFeedbackSound.None;
+        }
+    }
+}
+
 public sealed class PurchaseHoldRules
 {
     object target;
@@ -33,6 +83,95 @@ public sealed class JumpRules
 {
     public float InitialVelocity(float height, float gravity)
         => height > 0f && gravity < 0f ? (float)Math.Sqrt(-2f * gravity * height) : 0f;
+}
+
+public readonly struct PlanarMovement
+{
+    public float X { get; }
+    public float Z { get; }
+    public PlanarMovement(float x, float z) { X = x; Z = z; }
+}
+
+public sealed class CameraRelativeMovementRules
+{
+    const float MinDirectionSqrMagnitude = 0.000001f;
+
+    public PlanarMovement Resolve(float inputX, float inputY,
+        float cameraRightX, float cameraRightZ, float cameraForwardX, float cameraForwardZ)
+    {
+        NormalizeOrFallback(ref cameraForwardX, ref cameraForwardZ, 0f, 1f);
+        NormalizeOrFallback(ref cameraRightX, ref cameraRightZ, cameraForwardZ, -cameraForwardX);
+
+        float x = cameraRightX * inputX + cameraForwardX * inputY;
+        float z = cameraRightZ * inputX + cameraForwardZ * inputY;
+        float magnitudeSquared = x * x + z * z;
+        if (magnitudeSquared > 1f)
+        {
+            float scale = 1f / (float)Math.Sqrt(magnitudeSquared);
+            x *= scale;
+            z *= scale;
+        }
+        return new PlanarMovement(x, z);
+    }
+
+    static void NormalizeOrFallback(ref float x, ref float z, float fallbackX, float fallbackZ)
+    {
+        float magnitudeSquared = x * x + z * z;
+        if (float.IsNaN(magnitudeSquared) || float.IsInfinity(magnitudeSquared)
+            || magnitudeSquared < MinDirectionSqrMagnitude)
+        {
+            x = fallbackX;
+            z = fallbackZ;
+            return;
+        }
+        float scale = 1f / (float)Math.Sqrt(magnitudeSquared);
+        x *= scale;
+        z *= scale;
+    }
+}
+
+public readonly struct ShoulderMovementFrame
+{
+    public float FacingX { get; }
+    public float FacingZ { get; }
+    public float MoveX { get; }
+    public float MoveZ { get; }
+    public ShoulderMovementFrame(float facingX, float facingZ, float moveX, float moveZ)
+    {
+        FacingX = facingX;
+        FacingZ = facingZ;
+        MoveX = moveX;
+        MoveZ = moveZ;
+    }
+}
+
+public sealed class ShoulderMovementRules
+{
+    public ShoulderMovementFrame Resolve(float facingX, float facingZ,
+        float turnInput, float moveInput, float maximumTurnDegrees)
+    {
+        float facingMagnitude = (float)Math.Sqrt(facingX * facingX + facingZ * facingZ);
+        if (float.IsNaN(facingMagnitude) || float.IsInfinity(facingMagnitude) || facingMagnitude < 0.001f)
+        {
+            facingX = 0f;
+            facingZ = 1f;
+        }
+        else
+        {
+            facingX /= facingMagnitude;
+            facingZ /= facingMagnitude;
+        }
+
+        float turn = Math.Max(-1f, Math.Min(1f, turnInput)) * Math.Max(0f, maximumTurnDegrees);
+        float radians = turn * (float)Math.PI / 180f;
+        float sine = (float)Math.Sin(radians);
+        float cosine = (float)Math.Cos(radians);
+        float rotatedX = facingX * cosine + facingZ * sine;
+        float rotatedZ = -facingX * sine + facingZ * cosine;
+        float throttle = Math.Max(-1f, Math.Min(1f, moveInput));
+        return new ShoulderMovementFrame(rotatedX, rotatedZ,
+            rotatedX * throttle, rotatedZ * throttle);
+    }
 }
 
 // One visit can have several body colliders; only a complete exit permits a redraw.
@@ -261,7 +400,7 @@ public sealed class BoardSpaceDefinition
     public BoardSpaceKind Kind { get; }
     public string Name { get; }
     public int Price { get; }
-    public int Toll => Math.Max(0, Price / 10);
+    public int Toll => Math.Max(0, Price / 4);
     public BoardSpaceDefinition(BoardSpaceKind kind, string name, int price = 0)
     {
         Kind = kind;
@@ -308,6 +447,7 @@ public sealed class ToyBoardPalette
     public string CenterAccentHex => "#FFF0A8";
     public string BoundaryHex => "#3A315A";
     public string UnownedPropertyColor(int boardIndex) => "#4A4D55";
+    public string PropertyLabelHex(bool owned) => owned ? "#111111" : "#FFFFFF";
     public string LabelHexFor(BoardSpaceKind kind)
         => kind == BoardSpaceKind.Property || kind == BoardSpaceKind.GoToJail
             || kind == BoardSpaceKind.JailVisit ? "#FFFFFF" : "#1F1733";
@@ -335,6 +475,17 @@ public sealed class ToyBoardPalette
 public static class HudOverlayRules
 {
     public static bool ShowGameplayCard(bool pauseOpen) => !pauseOpen;
+}
+
+public enum HudGameplayCard { None, Event, Property }
+
+public sealed class HudGameplayCardRules
+{
+    public HudGameplayCard Choose(bool hasProperty, bool hasMessage)
+    {
+        if (hasProperty) return HudGameplayCard.Property;
+        return hasMessage ? HudGameplayCard.Event : HudGameplayCard.None;
+    }
 }
 
 public static class MainMenuRulesContent
@@ -384,6 +535,29 @@ public static class TouchControlBindings
     public const string Buy = "<Gamepad>/buttonNorth";
 }
 
+public enum CameraViewMode { Overview, Shoulder }
+
+public sealed class CameraViewRules
+{
+    public CameraViewMode Initial() => CameraViewMode.Overview;
+    public CameraViewMode FromStored(int value)
+        => value == (int)CameraViewMode.Shoulder ? CameraViewMode.Shoulder : CameraViewMode.Overview;
+    public CameraViewMode Toggle(CameraViewMode mode)
+        => mode == CameraViewMode.Overview ? CameraViewMode.Shoulder : CameraViewMode.Overview;
+    public CameraViewMode Effective(CameraViewMode preferred, bool hasLocalPlayer)
+        => hasLocalPlayer ? preferred : CameraViewMode.Overview;
+    public string ButtonText(CameraViewMode preferred)
+        => preferred == CameraViewMode.Shoulder ? "CAMERA: SHOULDER [C]" : "CAMERA: OVERVIEW [C]";
+}
+
+public static class PlayerSfxRules
+{
+    public const string JumpResourcePath = "Audio/SFX/jump-preview";
+    public const string PushResourcePath = "Audio/SFX/push-preview";
+    public static bool ShouldPlayJump(bool grounded, bool jumpPressed)
+        => grounded && jumpPressed;
+}
+
 // Shared presentation numbers keep the runtime HUD/camera consistent and let the
 // jam's important screen proportions be checked without loading a Unity scene.
 public sealed class BoardPresentationRules
@@ -398,7 +572,10 @@ public sealed class BoardPresentationRules
     public float PropertyCardTop(float screenHeight)
         => Math.Max(0f,(screenHeight - PropertyCardHeight) * .5f);
     public float EventCardTop(float screenHeight)
-        => Math.Max(0f,(screenHeight - EventCardHeight) * .5f);
+        => EventCardTop(screenHeight, EventCardHeight, false);
+    public float EventCardTop(float screenHeight, float cardHeight, bool shoulderView)
+        => shoulderView ? Math.Max(0f, Math.Min(90f, screenHeight - cardHeight - 12f))
+            : Math.Max(0f, (screenHeight - cardHeight) * .5f);
     public float SidePanelWidth(float screenWidth,float screenHeight)
         => Math.Max(220f,Math.Min(270f,(screenWidth-screenHeight)*.5f-12f));
 

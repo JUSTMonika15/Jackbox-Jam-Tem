@@ -72,12 +72,12 @@ public class ContinuousBoard : MonoBehaviour
             new Vector3(size.x-.16f,.035f,size.z-.16f),MaterialFor(index,definition.Kind));
         Renderer renderer = face.GetComponent<Renderer>();
 
-        CreateLabel(tile.transform,index,definition,size);
+        TextMesh label = CreateLabel(tile.transform,index,definition,size);
 
         if (definition.Kind == BoardSpaceKind.Property)
         {
             PropertyZone property = tile.AddComponent<PropertyZone>();
-            property.Configure(definition.Name,definition.Price,definition.Toll,renderer,
+            property.Configure(definition.Name,definition.Price,definition.Toll,renderer,label,
                 ColorFromHex(palette.UnownedPropertyColor(index)));
         }
         else if (definition.Kind == BoardSpaceKind.Fortune || definition.Kind == BoardSpaceKind.Chance)
@@ -139,7 +139,7 @@ public class ContinuousBoard : MonoBehaviour
         return MaterialFromHex("Board_"+variant,palette.ColorFor(boardIndex,kind));
     }
 
-    private void CreateLabel(Transform parent, int boardIndex, BoardSpaceDefinition definition, Vector3 tileSize)
+    private TextMesh CreateLabel(Transform parent, int boardIndex, BoardSpaceDefinition definition, Vector3 tileSize)
     {
         GameObject labelObject = new GameObject("Label");
         labelObject.transform.SetParent(parent, false);
@@ -155,6 +155,7 @@ public class ContinuousBoard : MonoBehaviour
         label.fontStyle = FontStyle.Bold;
         label.color = ColorFromHex(palette.LabelHexFor(definition.Kind));
         ApplyDepthTestedTextMaterial(label);
+        return label;
     }
 
     private static void ImproveAuthoredJailLabel()

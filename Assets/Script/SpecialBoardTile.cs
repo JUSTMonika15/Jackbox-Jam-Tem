@@ -7,6 +7,7 @@ public class SpecialBoardTile : MonoBehaviour
     [SerializeField] private BoardSpaceKind kind;
     private readonly HashSet<PlayerState> visitors = new HashSet<PlayerState>();
     private readonly Dictionary<PlayerState, int> speedStripLap = new Dictionary<PlayerState, int>();
+    private readonly MovementBonusRules movementBonus = new MovementBonusRules();
     private BoxCollider trigger;
     private GameManager game;
 
@@ -43,16 +44,18 @@ public class SpecialBoardTile : MonoBehaviour
             case BoardSpaceKind.IncomeTax:
                 int tax = Mathf.Min(20, Mathf.CeilToInt(player.Money * .2f));
                 player.AddMoney(-tax);
-                player.ShowMessage("Income tax -$" + tax);
+                player.ShowFeedback("INCOME TAX\n-$" + tax, PlayerFeedbackKind.Negative);
                 break;
             case BoardSpaceKind.LuxuryTax:
                 int luxury = Mathf.Min(25, player.Money);
                 player.AddMoney(-luxury);
-                player.ShowMessage("Luxury tax -$" + luxury);
+                player.ShowFeedback("LUXURY TAX\n-$" + luxury, PlayerFeedbackKind.Negative);
                 break;
             case BoardSpaceKind.MovementBonus:
-                player.AddMoney(10);
-                player.ShowMessage("Movement bonus +$10");
+                int reward = movementBonus.TryClaim(player, player.LapCount);
+                if (reward <= 0) break;
+                player.AddMoney(reward);
+                player.ShowFeedback("MOTION BONUS\n+$" + reward, PlayerFeedbackKind.Positive);
                 break;
             case BoardSpaceKind.SlowStrip:
                 player.ApplyBoardEffect(BoardEventKind.SlowDown);
@@ -62,7 +65,8 @@ public class SpecialBoardTile : MonoBehaviour
                 speedStripLap[player] = player.LapCount;
                 player.ApplyBoardEffect(BoardEventKind.SpeedUp);
                 player.ResetPushCooldownFromBoard();
-                player.ShowMessage("Speed strip! Push refreshed");
+                player.ShowFeedback("SPEED BOOST!\nFast for 5s — push refreshed",
+                    PlayerFeedbackKind.SpeedUp);
                 break;
             case BoardSpaceKind.GoToJail:
                 player.ApplyBoardEffect(BoardEventKind.Jail);
@@ -75,6 +79,7 @@ public class SpecialBoardTile : MonoBehaviour
     {
         visitors.Clear();
         speedStripLap.Clear();
+        movementBonus.Reset();
     }
     private void OnDisable() => visitors.Clear();
 }

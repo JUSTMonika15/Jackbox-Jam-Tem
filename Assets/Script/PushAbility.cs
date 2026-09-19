@@ -16,6 +16,7 @@ public class PushAbility : MonoBehaviour
     private CharacterController controller;
     private InputAction action;
     private PushCooldown cooldown;
+    private PlayerSfx sfx;
     public float CooldownRemaining => cooldown == null ? 0f : cooldown.Remaining(Time.time);
     private void Awake()
     {
@@ -23,6 +24,8 @@ public class PushAbility : MonoBehaviour
         movement = GetComponent<FollowCamPlayer>();
         controller = GetComponent<CharacterController>();
         cooldown = new PushCooldown(cooldownSeconds);
+        sfx = GetComponent<PlayerSfx>();
+        if (sfx == null) sfx = gameObject.AddComponent<PlayerSfx>();
     }
     private void Start()
     {
@@ -44,6 +47,7 @@ public class PushAbility : MonoBehaviour
     public int TryPush()
     {
         if (player == null || !player.IsLocalPlayer || !cooldown.TryUse(player.CanAct, Time.time)) return 0;
+        sfx.PlayPush();
         Vector3 requestedForward = movement != null ? movement.FacingDirection : Vector3.forward;
         if (!player.IsStateAuthority)
         {

@@ -16,6 +16,7 @@ public sealed class TouchControlsOverlay : MonoBehaviour
     Sprite circleSprite;
     bool pauseOpen;
     bool shown;
+    BoardCamera boardCamera;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Install()
@@ -38,6 +39,7 @@ public sealed class TouchControlsOverlay : MonoBehaviour
 
     void Awake()
     {
+        boardCamera = FindAnyObjectByType<BoardCamera>();
         EnsureEventSystem();
         CreateCircleSprite();
         BuildCanvas();
@@ -113,6 +115,8 @@ public sealed class TouchControlsOverlay : MonoBehaviour
             new Color(.96f, .34f, .28f, .88f), TouchControlBindings.Push);
         CreateButton("JUMP", canvasObject.transform, new Vector2(-110f, 228f),
             new Color(.25f, .68f, .98f, .88f), TouchControlBindings.Jump);
+        CreateActionButton("CAM", canvasObject.transform, new Vector2(-224f, 228f),
+            new Color(.42f, .72f, .42f, .88f), ToggleMode);
     }
 
     RectTransform CreateCircle(string label, Transform parent, Vector2 position, Vector2 size,
@@ -143,6 +147,23 @@ public sealed class TouchControlsOverlay : MonoBehaviour
         rect.anchoredPosition = position;
         OnScreenButton button = rect.gameObject.AddComponent<OnScreenButton>();
         button.controlPath = controlPath;
+    }
+
+    void CreateActionButton(string label, Transform parent, Vector2 position, Color color, UnityEngine.Events.UnityAction action)
+    {
+        RectTransform rect = CreateCircle(label, parent, position, new Vector2(98f, 98f), color, false);
+        rect.anchorMin = rect.anchorMax =
+            new Vector2(TouchControlLayout.ButtonAnchorX, TouchControlLayout.ButtonAnchorY);
+        rect.anchoredPosition = position;
+        Button button = rect.gameObject.AddComponent<Button>();
+        button.targetGraphic = rect.GetComponent<Image>();
+        button.onClick.AddListener(action);
+    }
+
+    void ToggleMode()
+    {
+        if (boardCamera == null) boardCamera = FindAnyObjectByType<BoardCamera>();
+        if (boardCamera != null) boardCamera.ToggleMode();
     }
 
     static void CreateLabel(string value, RectTransform parent)

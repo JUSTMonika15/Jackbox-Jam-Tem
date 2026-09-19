@@ -30,7 +30,11 @@ public class PlayerState : NetworkBehaviour
     public bool IsPurchaseReadyFor(PropertyZone land) => purchase.IsReadyFor(land);
     private string message;
     private float messageUntil;
+    private PlayerFeedbackKind feedbackKind;
+    private int feedbackSequence;
     private float nextIdentityRefresh;
+    private Vector3 roundStartPosition;
+    private Quaternion roundStartRotation;
 
     internal EconomyAccount Account => account;
     public int Money => account == null ? startingMoney : account.Money;
@@ -50,6 +54,8 @@ public class PlayerState : NetworkBehaviour
     }
     public Color PlayerColor => playerColor;
     public string Message => Time.unscaledTime < messageUntil ? message : string.Empty;
+    public PlayerFeedbackKind FeedbackKind => feedbackKind;
+    public int FeedbackSequence => feedbackSequence;
     public bool CanPlay => game != null && game.CanPlay;
     public bool CanAct => CanPlay && (effects == null || (!effects.IsJailed && !effects.IsWorking));
     // Player state belongs to this network identity.  Do not borrow the scene
@@ -92,6 +98,8 @@ public class PlayerState : NetworkBehaviour
 
     private void Awake()
     {
+        roundStartPosition = transform.position;
+        roundStartRotation = transform.rotation;
         account = new EconomyAccount(startingMoney);
         movement = GetComponent<FollowCamPlayer>();
         input = GetComponent<PlayerInput>();
@@ -233,15 +241,40 @@ public class PlayerState : NetworkBehaviour
         nearby.Clear();
         laps.ResetLaps();
         message = string.Empty;
-        if (isSpawned && isServer) ResetRoundClientRpc();
+        TeleportToRoundStart(roundStartPosition, roundStartRotation);
+        if (isSpawned && isServer) ResetRoundClientRpc(roundStartPosition.x, roundStartPosition.y,
+            roundStartPosition.z, roundStartRotation.x, roundStartRotation.y, roundStartRotation.z,
+            roundStartRotation.w);
         NotifyStateChanged();
+    }
+
+    private void TeleportToRoundStart(Vector3 position, Quaternion rotation)
+    {
+        if (effects == null) effects = GetComponent<PlayerEffects>();
+        if (effects != null) effects.Teleport(position);
+        else
+        {
+            if (characterController == null) characterController = GetComponent<CharacterController>();
+            bool wasEnabled = characterController != null && characterController.enabled;
+            if (characterController != null) characterController.enabled = false;
+            transform.position = position;
+            if (characterController != null) characterController.enabled = wasEnabled;
+        }
+        transform.rotation = rotation;
+    }
+
+    public void ReturnToSpawnPoint()
+    {
+        if (!IsStateAuthority) return;
+        TeleportToRoundStart(roundStartPosition, roundStartRotation);
     }
 
     public void AddMoney(int amount)
     {
         if (!CanPlay || !IsStateAuthority) return;
         account.AddMoney(amount);
-        ShowMessage((amount >= 0 ? "+$" : "-$") + System.Math.Abs((long)amount));
+        ShowFeedback((amount >= 0 ? "+$" : "-$") + System.Math.Abs((long)amount),
+            amount >= 0 ? PlayerFeedbackKind.Positive : PlayerFeedbackKind.Negative);
         NotifyStateChanged();
     }
 
@@ -363,27 +396,37 @@ public class PlayerState : NetworkBehaviour
     internal void RecordRent(int amount)
     {
         RentEarned = (int)System.Math.Min(int.MaxValue, (long)RentEarned + amount);
-        ShowMessage("+$" + amount + " rent");
+        ShowFeedback("RENT RECEIVED\n+$" + amount, PlayerFeedbackKind.Positive);
         NotifyStateChanged();
     }
-    public void ShowMessage(string text)
+    public void ShowMessage(string text) => ShowFeedback(text, PlayerFeedbackKind.Neutral);
+
+    public void ShowFeedback(string text, PlayerFeedbackKind kind)
     {
         if (isSpawned && isServer)
         {
-            ApplyMessageRpc(text ?? string.Empty);
+            ApplyMessageRpc(text ?? string.Empty, (int)kind);
             return;
         }
-        ApplyMessageLocal(text);
+        ApplyMessageLocal(text, kind);
     }
 
-    private void ApplyMessageLocal(string text)
+    private void ApplyMessageLocal(string text, PlayerFeedbackKind kind)
     {
         message = text;
-        messageUntil = Time.unscaledTime + 2.5f;
+        feedbackKind = kind;
+        feedbackSequence++;
+        messageUntil = Time.unscaledTime + new PlayerFeedbackRules().Duration(kind);
     }
 
     [ObserversRpc(runLocally: true)]
-    private void ApplyMessageRpc(string text) => ApplyMessageLocal(text);
+    private void ApplyMessageRpc(string text, int kind)
+    {
+        PlayerFeedbackKind resolved = kind >= (int)PlayerFeedbackKind.Neutral
+            && kind <= (int)PlayerFeedbackKind.Pass
+            ? (PlayerFeedbackKind)kind : PlayerFeedbackKind.Neutral;
+        ApplyMessageLocal(text, resolved);
+    }
 
     public void ApplyBoardEffect(BoardEventKind kind)
     {
@@ -444,13 +487,16 @@ public class PlayerState : NetworkBehaviour
     }
 
     [ObserversRpc(runLocally: false)]
-    private void ResetRoundClientRpc()
+    private void ResetRoundClientRpc(float positionX, float positionY, float positionZ,
+        float rotationX, float rotationY, float rotationZ, float rotationW)
     {
         if (effects == null) effects = GetComponent<PlayerEffects>();
         if (effects != null) effects.ResetEffects();
         if (push == null) push = GetComponent<PushAbility>();
         if (push != null) push.ResetAbility();
         purchase.Reset();
+        TeleportToRoundStart(new Vector3(positionX, positionY, positionZ),
+            new Quaternion(rotationX, rotationY, rotationZ, rotationW));
     }
 
     public void NotifyStateChanged()
